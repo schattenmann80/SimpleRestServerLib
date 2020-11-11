@@ -67,7 +67,7 @@ static void free_client_data( RSL_RestServer *pRestServer, RSL_ClientData *pClie
 static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
 static char* skip_whitespace( char* pData );
 static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
-static void parse_url_arguments( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
+static void parse_url_arguments( RSL_ClientRequest *pClientRequest );
 
 /************************* Public functions: *************************/
 
@@ -75,11 +75,11 @@ RSL_RestServer* rsl_new_rest_server()
 {
 	RSL_RestServer *pRestServer;
 
-	pRestServer = calloc( 1, sizeof( RSL_RestServer ) );
+	pRestServer = (RSL_RestServer*) calloc( 1, sizeof( RSL_RestServer ) );
 
 	pRestServer->pErrorFunction = default_error_function;
 
-	pRestServer->ppResponceDefs = calloc( 16, sizeof( RSL_ResponceDefinition*) );
+	pRestServer->ppResponceDefs = ( RSL_ResponceDefinition**) calloc( 16, sizeof( RSL_ResponceDefinition*) );
 	pRestServer->iResponceDefsCapacity = 16;
 	pRestServer->iResponceDefsCount = 0;
 
@@ -178,6 +178,7 @@ int rsl_option_set_Timeout( RSL_RestServer *pRestServer, int iSec, int iMiliSec 
 int rsl_option_set_error_function( RSL_RestServer *pRestServer, RSL_ErrorFunction *pErrorFunction )
 {
 	pRestServer->pErrorFunction = pErrorFunction;
+	return 1;
 }
 
 int rsl_option_set_responce_function( RSL_RestServer *pRestServer, 
@@ -188,7 +189,7 @@ int rsl_option_set_responce_function( RSL_RestServer *pRestServer,
 	if( pRestServer->iResponceDefsCapacity <= pRestServer->iResponceDefsCount )
 	{
 		pRestServer->iResponceDefsCapacity += 16;
-		pRestServer->ppResponceDefs = realloc( pRestServer->ppResponceDefs,
+		pRestServer->ppResponceDefs = (RSL_ResponceDefinition**) realloc( pRestServer->ppResponceDefs,
 					pRestServer->iResponceDefsCapacity * sizeof( RSL_ResponceDefinition*)  );
 
 		if( pRestServer->ppResponceDefs == NULL )
@@ -197,7 +198,7 @@ int rsl_option_set_responce_function( RSL_RestServer *pRestServer,
 		}
 	}
 
-	RSL_ResponceDefinition * pResDef = calloc( 1, sizeof( RSL_ResponceDefinition) );
+	RSL_ResponceDefinition * pResDef = (RSL_ResponceDefinition*) calloc( 1, sizeof( RSL_ResponceDefinition) );
 	if( pResDef == NULL )
 	{
 		pRestServer->pErrorFunction("calloc error", 0 );
@@ -248,7 +249,7 @@ void rsl_run( RSL_RestServer *pRestServer )
 		receive_data( pRestServer, &sClientData );
 
 		parse_http_request( &sClientData, &sClientRequest );
-		parse_url_arguments( &sClientData, &sClientRequest );
+		parse_url_arguments( &sClientRequest );
 
 		create_responce( pRestServer, &sClientData, &sClientRequest );
 
@@ -453,7 +454,7 @@ static void receive_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientDa
 
 
 	if( check_for_data_to_read( pRestServer, pClientData->iFileDescriptorClient ) == 0 
-		|| pRestServer->bHTTPS && SSL_pending( pClientData->ssl ) > 0 )
+		|| ( pRestServer->bHTTPS && SSL_pending( pClientData->ssl ) > 0 ) )
 	{
 		pRestServer->pErrorFunction("No response from client", HTTP );
 		return;
@@ -608,7 +609,7 @@ static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClien
 }
 
 
-static void parse_url_arguments( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest )
+static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
 {
 	char* pszQuestionMark = NULL;
 	char* pszDataStart;
@@ -633,7 +634,7 @@ static void parse_url_arguments( RSL_ClientData *pClientData, RSL_ClientRequest 
 	}
 	pClientRequest->iArgumentCount++;
 
-	pClientRequest->pArguments = calloc( pClientRequest->iArgumentCount, sizeof(RSL_URLArgument) );
+	pClientRequest->pArguments = (RSL_URLArgument*) calloc( pClientRequest->iArgumentCount, sizeof(RSL_URLArgument) );
 
 	pItem = pszDataStart;
 	cnt = 0;

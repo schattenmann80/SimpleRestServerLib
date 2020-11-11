@@ -16,7 +16,7 @@ typedef const char* RSL_ResponceFunction( RSL_RestServer* pRestServer, RSL_Clien
 
 typedef struct RSL_ClientRequest
 {
-	const char* pszUrl;
+	char* pszUrl;
 	char pszRequestMethod[16];
 	const char* pszBody;
 	RSL_URLArgument *pArguments;
