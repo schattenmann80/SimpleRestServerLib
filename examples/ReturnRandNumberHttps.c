@@ -6,10 +6,20 @@ const char* Get_responce( RSL_RestServer *pRestServer, RSL_ClientRequest* pClien
 					"Connection: close\r\n"
 					"Content-Type: application/json\r\n"
 					"\r\n"
-					"{ \"Message\": \"Hallo\" }\r\n";
-	//puts("Body");
-	//puts(pClientRequest->pszBody);
-	return reply;
+					"{ \"Message\": \"Hallo\", \"Number\": %d }\r\n";
+	static char buffer[128];
+	int cnt = 0;
+
+	if( pClientRequest->pszBody && *pClientRequest->pszBody != 0 ) puts(pClientRequest->pszBody); 
+
+	for( ; cnt < pClientRequest->iArgumentCount; cnt++ )
+	{
+		printf( "key: %s, value: %s\n", pClientRequest->pArguments[cnt].pszKey,  pClientRequest->pArguments[cnt].pszValue );
+	}
+
+	sprintf( buffer, reply, rand() );
+
+	return buffer;
 }
 
 int main( int argc, char **argv )

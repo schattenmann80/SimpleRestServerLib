@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "../include/SimpleRestServerLib.h"
 
 
@@ -8,7 +9,8 @@ const char* Get_responce( RSL_RestServer *pRestServer, RSL_ClientRequest* pClien
 					"Connection: close\r\n"
 					"Content-Type: application/json\r\n"
 					"\r\n"
-					"{ \"Message\": \"Hallo\" }\r\n";
+					"{ \"Message\": \"Hallo\", \"Number\": %d }\r\n";
+	static char buffer[128];
 	int cnt = 0;
 
 	if( pClientRequest->pszBody && *pClientRequest->pszBody != 0 ) puts(pClientRequest->pszBody); 
@@ -18,7 +20,9 @@ const char* Get_responce( RSL_RestServer *pRestServer, RSL_ClientRequest* pClien
 		printf( "key: %s, value: %s\n", pClientRequest->pArguments[cnt].pszKey,  pClientRequest->pArguments[cnt].pszValue );
 	}
 
-	return reply;
+	sprintf( buffer, reply, rand() );
+
+	return buffer;
 }
 
 int main( int argc, char **argv )
