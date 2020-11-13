@@ -9,6 +9,10 @@ You need openssl and the openssl headers ( libssl-dev )
 
     apt-get install libssl-dev
     
+Compile with libs: 
+
+    -lssl -lcrypto
+    
 ## Usage 
 
 1. Init server
