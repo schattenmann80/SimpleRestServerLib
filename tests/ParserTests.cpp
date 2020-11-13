@@ -92,4 +92,35 @@ TEST_CASE("Test parse_url_arguments")
 		free( sClientRequest.pszUrl );
 		free( sClientRequest.pArguments );
 	}
+
+	SECTION( "Wrong input: to much =" )
+	{
+		sClientRequest.pszUrl = strdup("abcde1/and/?arg1==val1=&=arg2=val2");
+
+		parse_url_arguments( &sClientRequest );
+
+		REQUIRE( sClientRequest.iArgumentCount == 0 );
+
+		REQUIRE( sClientRequest.iArgumentParseError == 1 );
+
+		REQUIRE( std::string( sClientRequest.pszUrl ) == std::string("abcde1/and/") );
+
+		free( sClientRequest.pszUrl );
+	}
+
+	SECTION( "Wrong input: to much &" )
+	{
+		sClientRequest.pszUrl = strdup("abcde1/and/?arg1&=val1&arg2&&=val2&");
+
+		parse_url_arguments( &sClientRequest );
+
+		REQUIRE( sClientRequest.iArgumentCount == 0 );
+
+		REQUIRE( sClientRequest.iArgumentParseError == 1 );
+
+		REQUIRE( std::string( sClientRequest.pszUrl ) == std::string("abcde1/and/") );
+
+		free( sClientRequest.pszUrl );
+	}
+
 }

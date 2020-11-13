@@ -47,29 +47,35 @@ typedef struct RSL_ClientData
 	size_t iRequestCapacity;
 	size_t iRequestSize;
 
-	char* pszResponce;
+	const char* pszResponce;
 } RSL_ClientData;
 
-static int create_socket( RSL_RestServer *pRestServer );
-static int check_for_data_to_read( RSL_RestServer *pRestServer, int file_descriptor );
-static int check_for_data_to_read_timeout( RSL_RestServer *pRestServer, int file_descriptor, int sec, int milisec );
-static void myopenssl_configure_context( RSL_RestServer *pRestServer );
-static void init_openssl();
-static int create_socket( RSL_RestServer *pRestServer );
-static int acept_client( RSL_RestServer *pRestServer );
-static int default_error_function( const char* pszErrorMessage, int bIsOpenSSL );
 static void myopenssl_create_context( RSL_RestServer *pRestServer );
+static int default_error_function( const char* pszErrorMessage, int bIsOpenSSL );
+static int acept_client( RSL_RestServer *pRestServer );
+static int create_socket( RSL_RestServer *pRestServer );
+static void init_openssl();
+static void myopenssl_configure_context( RSL_RestServer *pRestServer );
+static int check_for_data_to_read_timeout( RSL_RestServer *pRestServer, int file_descriptor, int sec, int milisec );
+static int check_for_data_to_read( RSL_RestServer *pRestServer, int file_descriptor );
 static int read_data_and_check_if_there_is_more( RSL_RestServer *pRestServer, RSL_ClientData *pClientData );
-		
 static void receive_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientData );
-static void error_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData );
-static void free_client_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
-static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
-static char* skip_whitespace( char* pData );
+		
 static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
+static const char* error_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData );
+
+static void free_client_data( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
+static void free_ClientData( RSL_ClientData *pClientData );
+static void free_ClientRequest( RSL_ClientRequest *pClientRequest );
+
+static char* skip_whitespace( char* pData );
+static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
 static void parse_url_arguments( RSL_ClientRequest *pClientRequest );
 
+
 /************************* Public functions: *************************/
+/***********************************************************************/
+
 
 RSL_RestServer* rsl_new_rest_server()
 {
@@ -262,14 +268,17 @@ void rsl_run( RSL_RestServer *pRestServer )
 			write( sClientData.iFileDescriptorClient, sClientData.pszResponce, strlen( sClientData.pszResponce ) );
 		}
 		
-		free_client_data( pRestServer, &sClientData, &sClientRequest );
+		free_client_data( &sClientData, &sClientRequest );
 		close( sClientData.iFileDescriptorClient );
 	}
 }
 
 
 /*************************  Interal functions: *************************/
+/***********************************************************************/
 
+
+/***************** Function for communication ******************/
 static void myopenssl_create_context( RSL_RestServer *pRestServer )
 {
 	const SSL_METHOD *method;
@@ -317,6 +326,7 @@ static int acept_client( RSL_RestServer *pRestServer )
 static int create_socket( RSL_RestServer *pRestServer )
 {
 	struct sockaddr_in addr;
+	int enable = 1;
 
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons( pRestServer->iPort );
@@ -328,6 +338,15 @@ static int create_socket( RSL_RestServer *pRestServer )
 		{
 			exit(EXIT_FAILURE);
 		} 
+	}
+
+	
+	if (setsockopt(pRestServer->iFileDescriptorServer, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+	{
+		if( pRestServer->pErrorFunction("setsockopt(SO_REUSEADDR) failed", 0 ) )
+		{
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	if( bind( pRestServer->iFileDescriptorServer, (struct sockaddr*)&addr, sizeof(addr) ) < 0 ) {
@@ -487,38 +506,68 @@ static void receive_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientDa
 	}
 }
 
-static void error_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData )
+/***************** Function to create response ******************/
+static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest )
 {
-	const char *responce = "HTTP/1.1 404 Not Found\r\n\r\n";
+	int cnt;
 
-	pClientData->pszResponce = strdup( responce );
+	for( cnt = 0; cnt < pRestServer->iResponceDefsCount; cnt++ )
+	{
+		if( strcmp(pRestServer->ppResponceDefs[cnt]->szRequestMethod, pClientRequest->pszRequestMethod ) == 0
+			&& strcmp( pRestServer->ppResponceDefs[cnt]->pszUrl, pClientRequest->pszUrl ) == 0 )
+		{
+			pClientData->pszResponce = pRestServer->ppResponceDefs[cnt]->pResponeFunctions( pRestServer, pClientRequest );
+			break;
+		}
+	}
+	
+	if( cnt == pRestServer->iResponceDefsCount || pClientData->pszResponce == NULL )
+	{
+		pClientData->pszResponce = error_responce( pRestServer, pClientData );
+	}
 }
 
-static void free_client_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest )
+static const char* error_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData )
+{
+	static const char *responce = "HTTP/1.1 404 Not Found\r\n\r\n";
+
+	return responce;
+}
+
+
+/***************** Functions to clean menory ******************/
+static void free_client_data( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest )
+{
+	free_ClientData( pClientData );
+	free_ClientRequest( pClientRequest );
+}
+
+static void free_ClientData( RSL_ClientData *pClientData )
 {
 	if( pClientData->pszRequestBuffer != NULL )
 	{
 		free( pClientData->pszRequestBuffer );
 	}
-	if( pClientData->pszResponce != NULL )
-	{
-		free( pClientData->pszResponce );
-	}
+
 	pClientData->iRequestCapacity = 0;
 	pClientData->iRequestSize = 0;
 
-	if( pRestServer->bHTTPS )
+	if( pClientData->ssl != NULL )
 	{
 		SSL_shutdown( pClientData->ssl );
 		SSL_free( pClientData->ssl );
 	}
+}
 
+static void free_ClientRequest( RSL_ClientRequest *pClientRequest )
+{
 	if( pClientRequest->pArguments != NULL )
 	{
 		free( pClientRequest->pArguments );
 	}
 }
 
+/***************** Function to process data ******************/
 static char* skip_whitespace( char* pData )
 {
 	while( pData && *pData && *pData <= ' ' )
@@ -588,33 +637,13 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 	return 1;
 }
 
-static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest )
-{
-	int cnt;
-
-	for( cnt = 0; cnt < pRestServer->iResponceDefsCount; cnt++ )
-	{
-		if( strcmp(pRestServer->ppResponceDefs[cnt]->szRequestMethod, pClientRequest->pszRequestMethod ) == 0
-			&& strcmp( pRestServer->ppResponceDefs[cnt]->pszUrl, pClientRequest->pszUrl ) == 0 )
-		{
-			pClientData->pszResponce = strdup( pRestServer->ppResponceDefs[cnt]->pResponeFunctions( pRestServer, pClientRequest ) );
-			break;
-		}
-	}
-	
-	if( cnt == pRestServer->iResponceDefsCount )
-	{
-		error_responce( pRestServer, pClientData );
-	}
-}
-
-
 static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
 {
 	char* pszQuestionMark = NULL;
 	char* pszDataStart;
 	int cnt;
 	char* pItem;
+	int iCntEqualChars = 0;
 
 	if( pClientRequest->pszUrl == NULL ) return;
 
@@ -631,8 +660,16 @@ static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
 	for( cnt = 0; pszDataStart[cnt]; cnt++ )
 	{
 		if( pszDataStart[cnt] == '&' ) pClientRequest->iArgumentCount++;
+		if( pszDataStart[cnt] == '=' ) iCntEqualChars++;
 	}
 	pClientRequest->iArgumentCount++;
+
+	if( iCntEqualChars != pClientRequest->iArgumentCount ) 
+	{
+		pClientRequest->iArgumentCount = 0;
+		pClientRequest->iArgumentParseError = 1;
+		return;
+	}
 
 	pClientRequest->pArguments = (RSL_URLArgument*) calloc( pClientRequest->iArgumentCount, sizeof(RSL_URLArgument) );
 

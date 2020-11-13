@@ -18,9 +18,11 @@ typedef struct RSL_ClientRequest
 {
 	char* pszUrl;
 	char pszRequestMethod[16];
-	const char* pszBody;
+	char* pszBody;
+
 	RSL_URLArgument *pArguments;
 	size_t iArgumentCount;
+	int iArgumentParseError;
 } RSL_ClientRequest;
 
 typedef struct RSL_URLArgument
