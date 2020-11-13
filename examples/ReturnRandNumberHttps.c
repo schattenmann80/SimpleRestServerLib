@@ -33,7 +33,7 @@ int main( int argc, char **argv )
 	rsl_option_set_certificate_file_path( server, "certificate/cert.pem" );
 	rsl_option_set_certificate_key_file_path( server, "certificate/key.pem" );
 
-	rsl_option_set_responce_function( server, Get_responce, "/", "GET" );
+	rsl_option_add_responce_function( server, Get_responce, "/", "GET" );
 
 	rsl_run( server );
 }

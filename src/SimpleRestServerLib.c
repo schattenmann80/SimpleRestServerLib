@@ -89,6 +89,8 @@ RSL_RestServer* rsl_new_rest_server()
 	pRestServer->iResponceDefsCapacity = 16;
 	pRestServer->iResponceDefsCount = 0;
 
+	pRestServer->iTimeoutSec = 5;
+
 	return pRestServer;
 }
 
@@ -187,7 +189,7 @@ int rsl_option_set_error_function( RSL_RestServer *pRestServer, RSL_ErrorFunctio
 	return 1;
 }
 
-int rsl_option_set_responce_function( RSL_RestServer *pRestServer, 
+int rsl_option_add_responce_function( RSL_RestServer *pRestServer, 
 											RSL_ResponceFunction pResponceFunction, 
 											const char* pszUrl,
 											const char* szRequestMethod )

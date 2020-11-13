@@ -41,7 +41,7 @@ extern int rsl_option_set_certificate_key_file_path( RSL_RestServer *pRestServer
 extern int rsl_option_set_certificate_file_path( RSL_RestServer *pRestServer, const char * pszPath );
 extern int rsl_option_set_Timeout( RSL_RestServer *pRestServer, int iSec, int iMiliSec );
 extern int rsl_option_set_error_function( RSL_RestServer *pRestServer, RSL_ErrorFunction *pErrorFunction );
-extern int rsl_option_set_responce_function( RSL_RestServer *pRestServer, 
+extern int rsl_option_add_responce_function( RSL_RestServer *pRestServer, 
 											RSL_ResponceFunction pResponceFunction, 
 											const char* pszUrl,
 											const char* szRequestMethod );
