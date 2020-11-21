@@ -33,6 +33,7 @@ int main( int argc, char **argv )
 	rsl_option_set_HTTPS( server, HTTP );
 	rsl_option_set_port( server, 15015 );
 	rsl_option_set_Timeout( server, 5, 0 );
+	rsl_option_set_verbose( server, 1 );
 
 	rsl_option_add_responce_function( server, Get_responce, "/", "GET" );
 	

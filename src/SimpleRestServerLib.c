@@ -26,6 +26,7 @@ typedef struct RSL_RestServer
 	char* pszCertificatKeyFilePath;
 	int iTimeoutSec;
 	int iTimeoutMiliSec;
+	int bVerbose;
 
 	RSL_ErrorFunction *pErrorFunction;
 	RSL_ResponceDefinition **ppResponceDefs;
@@ -50,6 +51,17 @@ typedef struct RSL_ClientData
 	const char* pszResponce;
 } RSL_ClientData;
 
+const char *pszVerboseMessageList[] =
+{
+	"",
+	"No data to parse!",
+	"The header dosn't contain a valid request method!",
+	"Header is not parsable!",
+	"No url to parse!",
+	"= and & count dosn't match!",
+	"No responce function found!"
+};
+
 static void myopenssl_create_context( RSL_RestServer *pRestServer );
 static int default_error_function( const char* pszErrorMessage, int bIsOpenSSL );
 static int acept_client( RSL_RestServer *pRestServer );
@@ -70,8 +82,8 @@ static void free_ClientRequest( RSL_ClientRequest *pClientRequest );
 
 static char* skip_whitespace( char* pData );
 static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
-static void parse_url_arguments( RSL_ClientRequest *pClientRequest );
-
+static int parse_url_arguments( RSL_ClientRequest *pClientRequest );
+static void verbose_output( RSL_RestServer *pRestServer, int iMessageId );
 
 /************************* Public functions: *************************/
 /***********************************************************************/
@@ -221,6 +233,12 @@ int rsl_option_add_responce_function( RSL_RestServer *pRestServer,
 	return 1;
 }
 
+int rsl_option_set_verbose( RSL_RestServer *pRestServer, int bVerbose )
+{
+	pRestServer->bVerbose = bVerbose;
+	return 1;
+}
+
 void rsl_run( RSL_RestServer *pRestServer )
 {
 	if( pRestServer->bRunning == 0 )
@@ -239,7 +257,7 @@ void rsl_run( RSL_RestServer *pRestServer )
 
 	while( 1 )
 	{
-		
+		int iRetVal = 0;
 		RSL_ClientData sClientData;
 		RSL_ClientRequest sClientRequest;
 
@@ -256,8 +274,11 @@ void rsl_run( RSL_RestServer *pRestServer )
 
 		receive_data( pRestServer, &sClientData );
 
-		parse_http_request( &sClientData, &sClientRequest );
-		parse_url_arguments( &sClientRequest );
+		iRetVal = parse_http_request( &sClientData, &sClientRequest );
+		if( iRetVal != 1 ) verbose_output( pRestServer, -iRetVal );
+
+		iRetVal = parse_url_arguments( &sClientRequest );
+		if( iRetVal != 1 ) verbose_output( pRestServer, -iRetVal );
 
 		create_responce( pRestServer, &sClientData, &sClientRequest );
 
@@ -506,6 +527,11 @@ static void receive_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientDa
 			}
 		}
 	}
+
+	if( pRestServer->bVerbose )
+	{
+		puts( pClientData->pszRequestBuffer );
+	}
 }
 
 /***************** Function to create response ******************/
@@ -526,6 +552,7 @@ static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClien
 	if( cnt == pRestServer->iResponceDefsCount || pClientData->pszResponce == NULL )
 	{
 		pClientData->pszResponce = error_responce( pRestServer, pClientData );
+		verbose_output( pRestServer, 6 );
 	}
 }
 
@@ -589,13 +616,13 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 		"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "TRACE", "OPTIONS", "CONNECT", NULL
 	};
 
-	if( pClientData->pszRequestBuffer == NULL ) return 0;
+	if( pClientData->pszRequestBuffer == NULL )	return -1;
 
 	pDatStart = pClientData->pszRequestBuffer;
 
 	pDatStart = skip_whitespace( pDatStart );
 
-	if( *pDatStart == '\0' ) return 0;
+	if( *pDatStart == '\0' ) return -1;
 
 	for( pList = ppRequestMethods; *pList != NULL; pList++ )
 	{
@@ -607,17 +634,37 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 		}
 	}
 
-	if( *pClientRequest->pszRequestMethod == '\0' ) return 0;
+	if( *pClientRequest->pszRequestMethod == '\0' ) return -2;
 
-	pDatStart = skip_whitespace( pDatStart ); if( *pDatStart == '\0' ) return 0;
+	pDatStart = skip_whitespace( pDatStart ); 
+	if( *pDatStart == '\0' ) return -3;
+
 
 	for( pDatEnd = pDatStart; *pDatEnd != '\0' && *pDatEnd > ' '; pDatEnd++ );
 
-	if( *pDatEnd == '\0' ) return 0;
+	if( *pDatEnd == '\0' ) return -3;
 
 	*pDatEnd = '\0';
 
 	pClientRequest->pszUrl = pDatStart;
+
+	pDatStart = pDatEnd + 1;
+
+	pDatStart = skip_whitespace( pDatStart ); 
+	if( *pDatStart == '\0' ) return -3;
+
+	for( pDatEnd = pDatStart; *pDatEnd != '\0' &&  *pDatEnd != '\r' && *pDatEnd != '\n'; pDatEnd++ );
+
+	if( *pDatEnd == '\0' ) return -3;
+
+	*pDatEnd = '\0';
+	pClientRequest->pszHttpVerison = pDatStart;
+
+	pDatStart = pDatEnd + 1;
+	pDatStart = skip_whitespace( pDatStart );
+	if( *pDatStart == '\0' ) return 1;
+
+	pClientRequest->pszHeaderArguments = pDatStart;
 
 	for( pDatStart = pDatEnd + 1; *pDatStart != '\0'; pDatStart++ )
 	{
@@ -625,13 +672,16 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 
 		if( strncmp( pDatStart, "\r\n\r\n", 4 ) == 0 )
 		{
+			*pDatStart = '\0';
 			pDatStart += 4;
 			break;
 		}
 
 		if( strncmp( pDatStart, "\n\n", 2 ) == 0 )
 		{
+			*pDatStart = '\0';
 			pDatStart += 2;
+			break;
 		}
 	}
 
@@ -639,7 +689,7 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 	return 1;
 }
 
-static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
+static int parse_url_arguments( RSL_ClientRequest *pClientRequest )
 {
 	char* pszQuestionMark = NULL;
 	char* pszDataStart;
@@ -647,11 +697,11 @@ static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
 	char* pItem;
 	int iCntEqualChars = 0;
 
-	if( pClientRequest->pszUrl == NULL ) return;
+	if( pClientRequest->pszUrl == NULL ) return -4;
 
 	pszQuestionMark = strchr( pClientRequest->pszUrl, '?' );
 
-	if( pszQuestionMark == NULL ) return;
+	if( pszQuestionMark == NULL ) return 1;
 
 	*pszQuestionMark = '\0';
 
@@ -670,7 +720,7 @@ static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
 	{
 		pClientRequest->iArgumentCount = 0;
 		pClientRequest->iArgumentParseError = 1;
-		return;
+		return -5;
 	}
 
 	pClientRequest->pArguments = (RSL_URLArgument*) calloc( pClientRequest->iArgumentCount, sizeof(RSL_URLArgument) );
@@ -694,4 +744,13 @@ static void parse_url_arguments( RSL_ClientRequest *pClientRequest )
 		}
 	}
 	pClientRequest->pArguments[cnt].pszValue = pszDataStart;
+
+	return 1;
+}
+
+static void verbose_output( RSL_RestServer *pRestServer, int iMessageId )
+{
+	if( pRestServer->bVerbose == 0 ) return;
+
+	printf( "VERBOSE:: %s\n", pszVerboseMessageList[iMessageId] );
 }

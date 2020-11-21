@@ -19,6 +19,8 @@ typedef struct RSL_ClientRequest
 	char* pszUrl;
 	char pszRequestMethod[16];
 	char* pszBody;
+	char* pszHeaderArguments;
+	char* pszHttpVerison;
 
 	RSL_URLArgument *pArguments;
 	size_t iArgumentCount;
@@ -44,6 +46,7 @@ extern int rsl_option_set_error_function( RSL_RestServer *pRestServer, RSL_Error
 extern int rsl_option_add_responce_function( RSL_RestServer *pRestServer, 
 											RSL_ResponceFunction pResponceFunction, 
 											const char* pszUrl,
-											const char* szRequestMethod );
+											const char* pszRequestMethod );
+extern int rsl_option_set_verbose( RSL_RestServer *pRestServer, int bVerbose );
 
 #endif
