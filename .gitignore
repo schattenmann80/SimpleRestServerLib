@@ -3,3 +3,4 @@ obj/*
 certificate/*
 tmp/*
 tests/bin/*
+tests/obj/*
