@@ -96,6 +96,24 @@ TEST_CASE( "Test Dynamic Array add and get" )
 		DA_free( array );
 	}
 
+	SECTION( "Add Pointer" )
+	{
+		DynamicArray *array;
+		array = DA_Init( TYPE_POINTER );
+
+		const char* value = "Test";
+
+		DA_add( array, value );
+
+		REQUIRE( DA_size(array) == 1 );
+
+		REQUIRE( DA_capacity(array) == 16 );
+
+		REQUIRE( DA_GET(array, char*, 0) == value );
+
+		DA_free( array );
+	}
+
 	SECTION( "Add costume" )
 	{
 		DynamicArray *array;
@@ -165,6 +183,34 @@ TEST_CASE( "Test Dynamic Array add and get" )
 		for( int cnt = 0; cnt < 32; cnt++ )
 		{
 			REQUIRE( DA_get_l(array, cnt ) == value );
+		}
+
+		DA_free( array );
+	}
+
+	SECTION( "Add more than 16 pointer Elements - to test realloc" )
+	{
+		DynamicArray *array;
+		array = DA_Init( TYPE_POINTER );
+
+		const char* values[] = 
+		{
+			"1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+			"11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+			"21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
+			"31", "32", "33", "34", "35", "36", "37", "38", "39", "40"
+		};
+
+		for( int cnt = 0; cnt < 32; cnt++ )
+		{
+			REQUIRE( DA_size(array) == cnt );
+			DA_add( array, values[cnt] );
+		}
+		REQUIRE( DA_capacity( array ) == 32 );
+
+		for( int cnt = 0; cnt < 32; cnt++ )
+		{
+			REQUIRE( DA_GET(array, char*, cnt ) == values[cnt] );
 		}
 
 		DA_free( array );

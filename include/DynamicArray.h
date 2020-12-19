@@ -9,9 +9,11 @@
 #define TYPE_FLOAT 2
 #define TYPE_LONG 3
 #define TYPE_DOUBLE 4
-#define TYPE_COSTUM 5
+#define TYPE_POINTER 5
+#define TYPE_COSTUM 6
 
 #define DA_GET( a, t, i ) *((t*)DA_get( a, i ))
+#define DA_GET_POINTER( a, t, i ) ((t*)DA_get( a, i ))
 #define DA_POP_BACK( a, t ) *((t*)DA_pop_back( a ))
 #define DA_BACK( a, t ) *((t*)DA_back( a ))
 

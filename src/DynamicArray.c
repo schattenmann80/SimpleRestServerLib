@@ -26,19 +26,14 @@ TypeInfo tInfo[] =
 	{"float", sizeof(float) },
 	{"long", sizeof(long) },
 	{"double", sizeof(double) },
+	{ "pointer", sizeof(void*) },
 	{"costum", 0 }
 };
 
 
 void DA_clear( DynamicArray *array )
 {
-	free( array->pBuffer );
-
-	array->capacity = 16;
-
 	array->size = 0;
-
-	array->pBuffer = malloc( array->capacity * tInfo[array->type].size );
 }
 
 DynamicArray *DA_Init( int type )
@@ -73,6 +68,7 @@ DynamicArray *DA_Init_Custom( size_t size )
 
 void DA_free( DynamicArray *array )
 {
+	free( array->pBuffer );
 	free( array );
 }
 
@@ -114,6 +110,9 @@ void DA_add( DynamicArray *array, ... )
 		break;
 	case TYPE_DOUBLE:
 		((double*)array->pBuffer)[array->size++] = va_arg( valist, double );
+		break;
+	case TYPE_POINTER:
+		((void**)array->pBuffer)[array->size++] = va_arg( valist, void* );
 		break;
 	case TYPE_COSTUM:
 		memcpy( ((char*)array->pBuffer) + array->size * tInfo[TYPE_COSTUM].size, va_arg( valist, char* ), tInfo[TYPE_COSTUM].size );

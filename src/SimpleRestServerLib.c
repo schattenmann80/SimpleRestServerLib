@@ -8,7 +8,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#include "../include/SimpleRestServerLib.h"
+#include "SimpleRestServerLib.h"
+#include "DynamicArray.h"
 
 typedef struct RSL_ResponceDefinition
 {
@@ -29,9 +30,7 @@ typedef struct RSL_RestServer
 	int bVerbose;
 
 	RSL_ErrorFunction *pErrorFunction;
-	RSL_ResponceDefinition **ppResponceDefs;
-	size_t iResponceDefsCount;
-	size_t iResponceDefsCapacity;
+	DynamicArray *pResponeDefs;
 
 	// Internals
 	int iFileDescriptorServer;
@@ -44,9 +43,7 @@ typedef struct RSL_ClientData
 	int iFileDescriptorClient;
 	SSL *ssl;
 
-	char* pszRequestBuffer;
-	size_t iRequestCapacity;
-	size_t iRequestSize;
+	DynamicArray *pRequestString;
 
 	const char* pszResponce;
 } RSL_ClientData;
@@ -97,9 +94,7 @@ RSL_RestServer* rsl_new_rest_server()
 
 	pRestServer->pErrorFunction = default_error_function;
 
-	pRestServer->ppResponceDefs = ( RSL_ResponceDefinition**) calloc( 16, sizeof( RSL_ResponceDefinition*) );
-	pRestServer->iResponceDefsCapacity = 16;
-	pRestServer->iResponceDefsCount = 0;
+	pRestServer->pResponeDefs = DA_Init_Custom( sizeof(RSL_ResponceDefinition));
 
 	pRestServer->iTimeoutSec = 5;
 
@@ -108,7 +103,6 @@ RSL_RestServer* rsl_new_rest_server()
 
 void rsl_clean_and_free_rest_server( RSL_RestServer *pRestServer )
 {
-	int cnt;
 	if( pRestServer->pszCertificatFilePath != NULL ) 
 	{
 		free( pRestServer->pszCertificatFilePath );
@@ -125,17 +119,13 @@ void rsl_clean_and_free_rest_server( RSL_RestServer *pRestServer )
 		SSL_CTX_free( pRestServer->ctx );
 	}
 
-	if( pRestServer->iResponceDefsCount > 0 )
+	for( size_t cnt = 0; cnt < DA_size( pRestServer->pResponeDefs ); cnt++ )
 	{
-		for( cnt = 0; cnt < pRestServer->iResponceDefsCount; cnt++ )
+		if( DA_GET_POINTER( pRestServer->pResponeDefs, RSL_ResponceDefinition, cnt)->pszUrl != NULL )
 		{
-			if( pRestServer->ppResponceDefs[cnt]->pszUrl != NULL )
-			{
-				free( pRestServer->ppResponceDefs[cnt]->pszUrl );
-			}
-			free( pRestServer->ppResponceDefs[cnt] );
+			free( DA_GET_POINTER( pRestServer->pResponeDefs, RSL_ResponceDefinition, cnt)->pszUrl );
 		}
-		free( pRestServer->ppResponceDefs );
+		DA_free( pRestServer->pResponeDefs );
 	}
 
 	free( pRestServer );
@@ -206,29 +196,12 @@ int rsl_option_add_responce_function( RSL_RestServer *pRestServer,
 											const char* pszUrl,
 											const char* szRequestMethod )
 {
-	if( pRestServer->iResponceDefsCapacity <= pRestServer->iResponceDefsCount )
-	{
-		pRestServer->iResponceDefsCapacity += 16;
-		pRestServer->ppResponceDefs = (RSL_ResponceDefinition**) realloc( pRestServer->ppResponceDefs,
-					pRestServer->iResponceDefsCapacity * sizeof( RSL_ResponceDefinition*)  );
+	RSL_ResponceDefinition def;
+	def.pResponeFunctions = pResponceFunction;
+	def.pszUrl = strdup( pszUrl );
+	strncpy( def.szRequestMethod, szRequestMethod, sizeof def.szRequestMethod -1 );
 
-		if( pRestServer->ppResponceDefs == NULL )
-		{
-			pRestServer->pErrorFunction("realloc error", 0 );
-		}
-	}
-
-	RSL_ResponceDefinition * pResDef = (RSL_ResponceDefinition*) calloc( 1, sizeof( RSL_ResponceDefinition) );
-	if( pResDef == NULL )
-	{
-		pRestServer->pErrorFunction("calloc error", 0 );
-	}
-	pResDef->pResponeFunctions = pResponceFunction;
-	pResDef->pszUrl = strdup( pszUrl );
-	strncpy( pResDef->szRequestMethod, szRequestMethod, sizeof pResDef->szRequestMethod -1 );
-
-	pRestServer->ppResponceDefs[pRestServer->iResponceDefsCount] = pResDef;
-	pRestServer->iResponceDefsCount++;
+	DA_add( pRestServer->pResponeDefs, &def );
 
 	return 1;
 }
@@ -458,18 +431,17 @@ static int check_for_data_to_read( RSL_RestServer *pRestServer, int file_descrip
 static int read_data_and_check_if_there_is_more( RSL_RestServer *pRestServer, RSL_ClientData *pClientData )
 {
 	int iReadRetVal = 0;
+	char buffer[512];
+
+	memset( buffer, 0, sizeof buffer );
 
 	if( pRestServer->bHTTPS )
 	{
-		iReadRetVal = SSL_read( pClientData->ssl, 
-				pClientData->pszRequestBuffer + pClientData->iRequestSize, 
-				pClientData->iRequestCapacity - pClientData->iRequestSize -1 );
+		iReadRetVal = SSL_read( pClientData->ssl, buffer, sizeof buffer -1 );
 	}
 	else
 	{
-		iReadRetVal = read( pClientData->iFileDescriptorClient,
-							pClientData->pszRequestBuffer + pClientData->iRequestSize, 
-							pClientData->iRequestCapacity - pClientData->iRequestSize -1 );
+		iReadRetVal = read( pClientData->iFileDescriptorClient, buffer, sizeof buffer -1 );
 	}
 	
 	if( iReadRetVal <= 0 )
@@ -478,8 +450,10 @@ static int read_data_and_check_if_there_is_more( RSL_RestServer *pRestServer, RS
 		return 0;
 	}
 
-	pClientData->iRequestSize += iReadRetVal;
-	pClientData->pszRequestBuffer[ pClientData->iRequestSize ] = '\0';
+	for(char* pValue = buffer; *pValue; pValue++ )
+	{
+		DA_add( pClientData->pRequestString, *pValue );
+	}
 
 	return check_for_data_to_read_timeout( pRestServer, pClientData->iFileDescriptorClient, 0, 100 )
 		|| ( pRestServer->bHTTPS && SSL_pending( pClientData->ssl ) > 0 );
@@ -502,35 +476,17 @@ static void receive_data( RSL_RestServer *pRestServer, RSL_ClientData *pClientDa
 		return;
 	}
 
-	pClientData->iRequestCapacity = 1024;
-	pClientData->iRequestSize = 0;
-
-	pClientData->pszRequestBuffer = (char*) malloc( pClientData->iRequestCapacity );
-
-	if( pClientData->pszRequestBuffer == NULL )
-	{
-		pRestServer->pErrorFunction("Error while mallocing", HTTP );
-		return;
-	}
+	pClientData->pRequestString = DA_Init(TYPE_CHAR);
 
 	while( read_data_and_check_if_there_is_more( pRestServer, pClientData ) )
 	{
-		if( pClientData->iRequestSize >= pClientData->iRequestCapacity -1 )
-		{
-			pClientData->iRequestCapacity *= 2;
-			pClientData->pszRequestBuffer = (char*) realloc( pClientData->pszRequestBuffer, pClientData->iRequestCapacity );
-
-			if( pClientData->pszRequestBuffer == NULL )
-			{
-				pRestServer->pErrorFunction("Error during realloc", HTTP );
-				return;
-			}
-		}
+		
 	}
+	DA_add( pClientData->pRequestString, '\0' );
 
 	if( pRestServer->bVerbose )
 	{
-		puts( pClientData->pszRequestBuffer );
+		puts( DA_get_cp( pClientData->pRequestString, 0 ) );
 	}
 }
 
@@ -539,17 +495,18 @@ static void create_responce( RSL_RestServer *pRestServer, RSL_ClientData *pClien
 {
 	int cnt;
 
-	for( cnt = 0; cnt < pRestServer->iResponceDefsCount; cnt++ )
+	for( cnt = 0; cnt < DA_size( pRestServer->pResponeDefs); cnt++ )
 	{
-		if( strcmp(pRestServer->ppResponceDefs[cnt]->szRequestMethod, pClientRequest->pszRequestMethod ) == 0
-			&& strcmp( pRestServer->ppResponceDefs[cnt]->pszUrl, pClientRequest->pszUrl ) == 0 )
+		RSL_ResponceDefinition *def = (RSL_ResponceDefinition*)DA_get( pRestServer->pResponeDefs, cnt );
+		if( strcmp(def->szRequestMethod, pClientRequest->pszRequestMethod ) == 0
+			&& strcmp( def->pszUrl, pClientRequest->pszUrl ) == 0 )
 		{
-			pClientData->pszResponce = pRestServer->ppResponceDefs[cnt]->pResponeFunctions( pRestServer, pClientRequest );
+			pClientData->pszResponce = def->pResponeFunctions( pRestServer, pClientRequest );
 			break;
 		}
 	}
 	
-	if( cnt == pRestServer->iResponceDefsCount || pClientData->pszResponce == NULL )
+	if( cnt == DA_size( pRestServer->pResponeDefs) || pClientData->pszResponce == NULL )
 	{
 		pClientData->pszResponce = error_responce( pRestServer, pClientData );
 		verbose_output( pRestServer, 6 );
@@ -573,13 +530,8 @@ static void free_client_data( RSL_ClientData *pClientData, RSL_ClientRequest *pC
 
 static void free_ClientData( RSL_ClientData *pClientData )
 {
-	if( pClientData->pszRequestBuffer != NULL )
-	{
-		free( pClientData->pszRequestBuffer );
-	}
-
-	pClientData->iRequestCapacity = 0;
-	pClientData->iRequestSize = 0;
+	DA_free( pClientData->pRequestString );
+	pClientData->pRequestString = NULL;
 
 	if( pClientData->ssl != NULL )
 	{
@@ -616,9 +568,11 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 		"GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "TRACE", "OPTIONS", "CONNECT", NULL
 	};
 
-	if( pClientData->pszRequestBuffer == NULL )	return -1;
+	//if( pClientData->pszRequestBuffer == NULL )	return -1;
+	if( DA_size( pClientData->pRequestString ) == 0 )	return -1;
 
-	pDatStart = pClientData->pszRequestBuffer;
+	//pDatStart = pClientData->pszRequestBuffer;
+	pDatStart = DA_get_cp( pClientData->pRequestString, 0 );
 
 	pDatStart = skip_whitespace( pDatStart );
 
