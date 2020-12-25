@@ -15,8 +15,11 @@ bin/%.o: %.cpp
 	@g++ -ggdb -c $< -o $@
 	$(DONE)
 
-bin/ParserTests: ParserTests.cpp bin/TestMain.o
-	@g++ -ggdb $^ -o $@ -lssl -lcrypto
+bin/ParserTests: \
+		ParserTests.cpp \
+		bin/TestMain.o \
+		obj/DynamicArray.o
+	@g++ -ggdb $(INCDIR) $^ -o $@ -lssl -lcrypto
 	$(DONE)
 
 bin/DynamicArrayTest: \

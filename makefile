@@ -1,5 +1,9 @@
+current_dir := ${CURDIR}
+
 DONE=@echo $@ done
-COMPAILER_OPTIONS= -Wall -ggdb -Werror=format-security -D_FORTIFY_SOURCE=1 -Llib/
+BIN_COMPAILER_OPTIONS= -Wall -ggdb -Werror=format-security -D_FORTIFY_SOURCE=1 -Llib/ -lSimpleRestServer -Wl,-rpath=$(current_dir)/lib
+OBJ_COMPAILER_OPTIONS= -Wall -ggdb -Werror=format-security -D_FORTIFY_SOURCE=1 -fPIC
+
 INCDIR=-Iinclude
 
 all: \
@@ -23,12 +27,12 @@ examples: \
 	$(DONE)
 
 obj/%.o: src/%.c
-	@gcc $(COMPAILER_OPTIONS) -fPIC $(INCDIR) -c $< -o $@
+	@gcc $(OBJ_COMPAILER_OPTIONS)  $(INCDIR) -c $< -o $@
 
 
 bin/%: \
 		examples/%.c
-	@gcc $(COMPAILER_OPTIONS) -o $@ $^ -lSimpleRestServer -lssl -lcrypto
+	@gcc $(BIN_COMPAILER_OPTIONS) -o $@ $^ -lssl -lcrypto
 	$(DONE)
 
 

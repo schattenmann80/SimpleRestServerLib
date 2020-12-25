@@ -30,6 +30,8 @@ extern size_t DA_capacity( DynamicArray *array );
 
 extern void DA_add( DynamicArray *array, ... );
 
+extern void DA_add_range( DynamicArray *array, size_t number, ... );
+
 extern void* DA_get( DynamicArray *array, size_t index );
 extern char DA_get_c( DynamicArray *array, size_t index );
 extern int DA_get_i( DynamicArray *array, size_t index );

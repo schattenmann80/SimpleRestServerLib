@@ -30,6 +30,7 @@ TypeInfo tInfo[] =
 	{"costum", 0 }
 };
 
+void DA_grow_if_necessary(  DynamicArray *array );
 
 void DA_clear( DynamicArray *array )
 {
@@ -88,39 +89,116 @@ void DA_add( DynamicArray *array, ... )
 
 	va_start( valist, array );
 
-	if( array->size >= array->capacity )
-	{
-		array->capacity *= 2;
-		array->pBuffer = realloc( array->pBuffer, array->capacity * tInfo[array->type].size );
-	}
+	DA_grow_if_necessary( array );
 
 	switch (array->type )
 	{
-	case TYPE_CHAR:
-		((char*)array->pBuffer)[array->size++] = (char) va_arg( valist, int );
-		break;
-	case TYPE_INT:
-		((int*)array->pBuffer)[array->size++] = va_arg( valist, int );
-		break;
-	case TYPE_FLOAT:
-		((float*)array->pBuffer)[array->size++] = (float) va_arg( valist, double );
-		break;
-	case TYPE_LONG:
-		((long*)array->pBuffer)[array->size++] = va_arg( valist, long );
-		break;
-	case TYPE_DOUBLE:
-		((double*)array->pBuffer)[array->size++] = va_arg( valist, double );
-		break;
-	case TYPE_POINTER:
-		((void**)array->pBuffer)[array->size++] = va_arg( valist, void* );
-		break;
-	case TYPE_COSTUM:
-		memcpy( ((char*)array->pBuffer) + array->size * tInfo[TYPE_COSTUM].size, va_arg( valist, char* ), tInfo[TYPE_COSTUM].size );
-		array->size++;
-		break;
-	
-	default:
-		break;
+		case TYPE_CHAR:
+			((char*)array->pBuffer)[array->size++] = (char) va_arg( valist, int );
+			break;
+		case TYPE_INT:
+			((int*)array->pBuffer)[array->size++] = va_arg( valist, int );
+			break;
+		case TYPE_FLOAT:
+			((float*)array->pBuffer)[array->size++] = (float) va_arg( valist, double );
+			break;
+		case TYPE_LONG:
+			((long*)array->pBuffer)[array->size++] = va_arg( valist, long );
+			break;
+		case TYPE_DOUBLE:
+			((double*)array->pBuffer)[array->size++] = va_arg( valist, double );
+			break;
+		case TYPE_POINTER:
+			((void**)array->pBuffer)[array->size++] = va_arg( valist, void* );
+			break;
+		case TYPE_COSTUM:
+			memcpy( ((char*)array->pBuffer) + array->size * tInfo[TYPE_COSTUM].size, va_arg( valist, char* ), tInfo[TYPE_COSTUM].size );
+			array->size++;
+			break;
+		
+		default:
+			break;
+	}
+
+	va_end(valist);
+}
+
+void DA_add_range( DynamicArray *array, size_t number, ... )
+{
+	va_list valist;
+	char* pszValue;
+	int* piValue;
+	float* pfValue;
+	long* plValue;
+	double* pdValue;
+	void** ppValue;
+	char** ppszValue;
+	size_t cnt;
+
+	va_start( valist, number );
+
+	switch (array->type )
+	{
+		case TYPE_CHAR:
+			pszValue = va_arg( valist, char* );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				((char*)array->pBuffer)[array->size++] = pszValue[cnt];
+			}
+			break;
+		case TYPE_INT:
+			piValue = va_arg( valist, int* );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				((int*)array->pBuffer)[array->size++] = piValue[cnt];
+			}
+			break;
+		case TYPE_FLOAT:
+			pfValue = va_arg( valist, float* );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				((float*)array->pBuffer)[array->size++] = pfValue[cnt];
+			}
+			break;
+		case TYPE_LONG:
+			plValue = va_arg( valist, long* );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				((long*)array->pBuffer)[array->size++] = plValue[cnt];
+			}
+			break;
+		case TYPE_DOUBLE:
+			pdValue = va_arg( valist, double* );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				((double*)array->pBuffer)[array->size++] = pdValue[cnt];
+			}
+			break;
+		case TYPE_POINTER:
+			ppValue = va_arg( valist, void** );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				((void**)array->pBuffer)[array->size++] = ppValue[cnt];
+			}
+			break;
+		case TYPE_COSTUM:
+			ppszValue = va_arg( valist, char** );
+			for( cnt = 0; cnt < number; cnt++ )
+			{
+				DA_grow_if_necessary( array );
+				memcpy( ((char*)array->pBuffer) + array->size * tInfo[TYPE_COSTUM].size, ppszValue[cnt], tInfo[TYPE_COSTUM].size );
+				array->size++;
+			}
+			break;
+
+		default:
+			break;
 	}
 
 	va_end(valist);
@@ -175,7 +253,7 @@ char* DA_get_cp( DynamicArray *array, size_t index )
 	return ((char*)array->pBuffer) + index;
 }
 
-extern void* DA_pop_back( DynamicArray *array )
+void* DA_pop_back( DynamicArray *array )
 {
 	if( array->size == 0 ) return NULL;
 
@@ -184,7 +262,16 @@ extern void* DA_pop_back( DynamicArray *array )
 	return ((char*)array->pBuffer) + tInfo[array->type].size * array->size;
 }
 
-extern void* DA_back( DynamicArray *array )
+void* DA_back( DynamicArray *array )
 {
 	return ((char*)array->pBuffer) + tInfo[array->type].size * (array->size - 1);
+}
+
+void DA_grow_if_necessary(  DynamicArray *array )
+{
+	if( array->size >= array->capacity )
+	{
+		array->capacity *= 2;
+		array->pBuffer = realloc( array->pBuffer, array->capacity * tInfo[array->type].size );
+	}
 }

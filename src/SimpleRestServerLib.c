@@ -78,9 +78,12 @@ static void free_ClientData( RSL_ClientData *pClientData );
 static void free_ClientRequest( RSL_ClientRequest *pClientRequest );
 
 static char* skip_whitespace( char* pData );
+static DynamicArray * split_http_request( char* pszClientData );
 static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest );
 static int parse_url_arguments( RSL_ClientRequest *pClientRequest );
 static void verbose_output( RSL_RestServer *pRestServer, int iMessageId );
+
+static DynamicArray* split_string( char * szData, char delimiter );
 
 /************************* Public functions: *************************/
 /***********************************************************************/
@@ -450,10 +453,7 @@ static int read_data_and_check_if_there_is_more( RSL_RestServer *pRestServer, RS
 		return 0;
 	}
 
-	for(char* pValue = buffer; *pValue; pValue++ )
-	{
-		DA_add( pClientData->pRequestString, *pValue );
-	}
+	DA_add_range( pClientData->pRequestString, strlen( buffer ), buffer );
 
 	return check_for_data_to_read_timeout( pRestServer, pClientData->iFileDescriptorClient, 0, 100 )
 		|| ( pRestServer->bHTTPS && SSL_pending( pClientData->ssl ) > 0 );
@@ -558,10 +558,63 @@ static char* skip_whitespace( char* pData )
 	return pData;
 }
 
+static DynamicArray * split_http_request( char* pszClientData )
+{
+	char *pszIndex;
+	char *pszStart;
+	char *pszBodyStart;
+	DynamicArray *vecTokens;
+
+	if( pszClientData == NULL || *pszClientData == '\0' ) return NULL;
+
+	pszIndex = pszClientData;
+
+	vecTokens = DA_Init( TYPE_POINTER );
+
+	//Find Start of the Body
+	if( ( pszBodyStart = strstr( pszIndex, "\n\n")) == NULL )
+	{
+		if( ( pszBodyStart = strstr( pszIndex, "\r\n\r\n") ) == NULL )
+		{
+			// No body found
+			DA_free( vecTokens );
+			return NULL;
+		}
+		else {
+			*pszBodyStart = '\0';
+			pszBodyStart += 4;
+		}
+	} else {
+		*pszBodyStart = '\0';
+		pszBodyStart += 2;
+	}
+
+	for( pszStart = pszIndex; pszIndex < pszBodyStart && DA_size( vecTokens ) < 3; pszIndex++ )
+	{
+		if( *pszIndex == ' ' || *pszIndex == '\n' || *pszIndex == '\r' )
+		{
+			if( pszStart != pszIndex )
+			{
+				*pszIndex = '\0'; // Replace whitespace with NULL;
+				DA_add( vecTokens, pszStart );
+			}
+			pszStart = pszIndex + 1; // Skip whitespace/Null
+		}
+	}
+
+	pszStart = skip_whitespace(pszStart);
+	if( *pszStart != '\0' ){
+		DA_add( vecTokens, skip_whitespace(pszStart) );
+	}
+
+	DA_add( vecTokens, pszBodyStart );
+	return vecTokens;
+}
+
 static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *pClientRequest )
 {
-	char *pDatStart;
-	char* pDatEnd;
+
+	DynamicArray *vecTokens;
 	const char** pList;
 	const char *ppRequestMethods[] =
 	{
@@ -571,75 +624,39 @@ static int parse_http_request( RSL_ClientData *pClientData, RSL_ClientRequest *p
 	//if( pClientData->pszRequestBuffer == NULL )	return -1;
 	if( DA_size( pClientData->pRequestString ) == 0 )	return -1;
 
-	//pDatStart = pClientData->pszRequestBuffer;
-	pDatStart = DA_get_cp( pClientData->pRequestString, 0 );
+	vecTokens = split_http_request( DA_get_cp( pClientData->pRequestString, 0 ) );
 
-	pDatStart = skip_whitespace( pDatStart );
-
-	if( *pDatStart == '\0' ) return -1;
+	// vecTokens must include request method, url, http version and body
+	if( DA_size( vecTokens) < 4 ) {
+		DA_free( vecTokens );
+		return -1;
+	}
 
 	for( pList = ppRequestMethods; *pList != NULL; pList++ )
 	{
-		if( strncmp( pDatStart, *pList, strlen( *pList ) ) == 0 )
+		if( strncmp( DA_GET( vecTokens, char*, 0 ), *pList, strlen( *pList ) ) == 0 )
 		{
 			strcpy( pClientRequest->pszRequestMethod, *pList );
-			pDatStart += strlen( *pList );
 			break;
 		}
 	}
+	if( *pClientRequest->pszRequestMethod == '\0' ) {
+		DA_free( vecTokens );
+		return -2;
+	}
 
-	if( *pClientRequest->pszRequestMethod == '\0' ) return -2;
+	pClientRequest->pszUrl = DA_GET( vecTokens, char*, 1 );
 
-	pDatStart = skip_whitespace( pDatStart ); 
-	if( *pDatStart == '\0' ) return -3;
+	pClientRequest->pszHttpVerison = DA_GET( vecTokens, char*, 2 );
 
+	pClientRequest->pszBody = DA_BACK( vecTokens, char* );
 
-	for( pDatEnd = pDatStart; *pDatEnd != '\0' && *pDatEnd > ' '; pDatEnd++ );
-
-	if( *pDatEnd == '\0' ) return -3;
-
-	*pDatEnd = '\0';
-
-	pClientRequest->pszUrl = pDatStart;
-
-	pDatStart = pDatEnd + 1;
-
-	pDatStart = skip_whitespace( pDatStart ); 
-	if( *pDatStart == '\0' ) return -3;
-
-	for( pDatEnd = pDatStart; *pDatEnd != '\0' &&  *pDatEnd != '\r' && *pDatEnd != '\n'; pDatEnd++ );
-
-	if( *pDatEnd == '\0' ) return -3;
-
-	*pDatEnd = '\0';
-	pClientRequest->pszHttpVerison = pDatStart;
-
-	pDatStart = pDatEnd + 1;
-	pDatStart = skip_whitespace( pDatStart );
-	if( *pDatStart == '\0' ) return 1;
-
-	pClientRequest->pszHeaderArguments = pDatStart;
-
-	for( pDatStart = pDatEnd + 1; *pDatStart != '\0'; pDatStart++ )
+	if( DA_size( vecTokens ) > 4 )
 	{
-		if( pDatStart[1] == '\0' &&  pDatStart[2] == '\0' && pDatStart[3] == '\0' ) return 0;
-
-		if( strncmp( pDatStart, "\r\n\r\n", 4 ) == 0 )
-		{
-			*pDatStart = '\0';
-			pDatStart += 4;
-			break;
-		}
-
-		if( strncmp( pDatStart, "\n\n", 2 ) == 0 )
-		{
-			*pDatStart = '\0';
-			pDatStart += 2;
-			break;
-		}
+		pClientRequest->pszHeaderArguments = DA_GET( vecTokens, char*, 3 );
 	}
 
-	pClientRequest->pszBody = pDatStart;
+	DA_free( vecTokens );
 	return 1;
 }
 
@@ -661,43 +678,25 @@ static int parse_url_arguments( RSL_ClientRequest *pClientRequest )
 
 	pszDataStart = pszQuestionMark + 1;
 
-	
-	pClientRequest->iArgumentCount = 0;
-	for( cnt = 0; pszDataStart[cnt]; cnt++ )
-	{
-		if( pszDataStart[cnt] == '&' ) pClientRequest->iArgumentCount++;
-		if( pszDataStart[cnt] == '=' ) iCntEqualChars++;
-	}
-	pClientRequest->iArgumentCount++;
+	DynamicArray *vecArgPairs = split_string( pszDataStart, '&' );
 
-	if( iCntEqualChars != pClientRequest->iArgumentCount ) 
-	{
-		pClientRequest->iArgumentCount = 0;
-		pClientRequest->iArgumentParseError = 1;
-		return -5;
-	}
+	if( vecArgPairs == NULL ) return -5;
+
+	pClientRequest->iArgumentCount = DA_size( vecArgPairs );
 
 	pClientRequest->pArguments = (RSL_URLArgument*) calloc( pClientRequest->iArgumentCount, sizeof(RSL_URLArgument) );
 
-	pItem = pszDataStart;
-	cnt = 0;
-	for( pItem = pszDataStart; *pItem && cnt < pClientRequest->iArgumentCount; pItem++ )
+	for( size_t cnt = 0; cnt < DA_size( vecArgPairs ); cnt++ )
 	{
-		if( *pItem == '&' ) 
+		pClientRequest->pArguments[cnt].pszKey = DA_GET( vecArgPairs, char*, cnt );
+		if( ( pszDataStart = strchr( DA_GET( vecArgPairs, char*, cnt ), '=')) != NULL )
 		{
-			pClientRequest->pArguments[cnt].pszValue = pszDataStart;
-			*pItem = '\0';
-			cnt++;
-			pszDataStart = pItem + 1;
-		}
-		if( *pItem == '=' ) 
-		{
-			pClientRequest->pArguments[cnt].pszKey = pszDataStart;
-			*pItem = '\0';
-			pszDataStart = pItem + 1;
+			*pszDataStart = '\0';
+			pClientRequest->pArguments[cnt].pszValue = pszDataStart + 1;
 		}
 	}
-	pClientRequest->pArguments[cnt].pszValue = pszDataStart;
+
+	DA_free( vecArgPairs );
 
 	return 1;
 }
@@ -707,4 +706,28 @@ static void verbose_output( RSL_RestServer *pRestServer, int iMessageId )
 	if( pRestServer->bVerbose == 0 ) return;
 
 	printf( "VERBOSE:: %s\n", pszVerboseMessageList[iMessageId] );
+}
+
+static DynamicArray* split_string( char * szData, char delimiter )
+{
+	DynamicArray *vec = DA_Init( TYPE_POINTER );
+
+	char* pStart;
+
+	for( pStart = szData; szData && *szData; szData++ )
+	{
+		if( *szData == delimiter )
+		{
+			if( szData != pStart ) DA_add( vec, pStart );
+			*szData = '\0';
+			pStart = szData + 1;
+		}
+	}
+
+	if( pStart != szData ) DA_add( vec, pStart );
+	
+	if( DA_size( vec ) > 0 ) return vec;
+
+	DA_free(vec);
+	return NULL;
 }
