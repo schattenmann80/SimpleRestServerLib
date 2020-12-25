@@ -9,9 +9,15 @@ You need openssl and the openssl headers ( libssl-dev )
 
     apt-get install libssl-dev
     
-Compile with libs: 
+Compile the SimpleRestServerLib by calling:
 
-    -lssl -lcrypto
+    make
+    
+Compile with the following libs: 
+
+    -lssl -lcrypto -lSimpleRestServer
+   
+The SimpleRestServer.so lib is in the direcotry lib, after you call make.
     
 ## Usage 
 
@@ -33,12 +39,12 @@ rsl_option_set_error_function( RSL_RestServer *pS, RSL_ErrorFunction *pErrorFunc
 rsl_option_set_responce_function( RSL_RestServer *pS, RSL_ResponceFunction pRF, const char* pszUrl, const char* pszRequestMethod );
 ```
   * Request method can have this values: "GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "TRACE", "OPTIONS", "CONNECT"
-  * RSL_ResponceFunction is the function that's gets called, if a client request the specified url and with the specified request method. 
-  * The Function return a string thats gets send to the client, http header included. It has the argumetns RSL_RestServer* and RSL_ClientRequest* 
+  * RSL_ResponceFunction is the function that's gets called, if a client request the specified url with the specified request method. 
+  * The RSL_ResponceFunction returns a string thats gets send to the client, http header must be included. It has the argumetns RSL_RestServer* and RSL_ClientRequest* 
     
-    This is also optional, because you can't responce to every posible url. If a client request a url, that has not responce function set, a default, page not found, answer is send back.
+    If a client requests a url, that has no responce function set, a default, page not found, answer is send back.
    
-4.  Call run function
+4.  Call the run function
 ```
  rsl_run( RSL_RestServer \*pRestServer );
 ```
