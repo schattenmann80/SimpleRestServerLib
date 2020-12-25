@@ -664,9 +664,7 @@ static int parse_url_arguments( RSL_ClientRequest *pClientRequest )
 {
 	char* pszQuestionMark = NULL;
 	char* pszDataStart;
-	int cnt;
-	char* pItem;
-	int iCntEqualChars = 0;
+	size_t cnt;
 
 	if( pClientRequest->pszUrl == NULL ) return -4;
 
@@ -686,7 +684,7 @@ static int parse_url_arguments( RSL_ClientRequest *pClientRequest )
 
 	pClientRequest->pArguments = (RSL_URLArgument*) calloc( pClientRequest->iArgumentCount, sizeof(RSL_URLArgument) );
 
-	for( size_t cnt = 0; cnt < DA_size( vecArgPairs ); cnt++ )
+	for( cnt = 0; cnt < DA_size( vecArgPairs ); cnt++ )
 	{
 		pClientRequest->pArguments[cnt].pszKey = DA_GET( vecArgPairs, char*, cnt );
 		if( ( pszDataStart = strchr( DA_GET( vecArgPairs, char*, cnt ), '=')) != NULL )
