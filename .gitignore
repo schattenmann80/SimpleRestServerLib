@@ -5,3 +5,4 @@ certificate/*
 tmp/*
 tests/bin/*
 tests/obj/*
+.vscode/*
